@@ -10,20 +10,21 @@ This file demonstrates how to use emacs-tyche with a simple Python Hypothesis te
    (add-to-list 'load-path "/path/to/emacs-tyche")
    (require 'tyche)
    
-   ;; Install websocket package if needed
+   ;; Install required packages if needed
    M-x package-install RET websocket RET
+   M-x package-install RET simple-httpd RET
    ```
 
 2. Configure (optional):
    ```elisp
-   ;; Use the deployed web view (default)
-   (setq tyche-webview-url "https://tyche-pbt.github.io/tyche-extension/")
+   ;; Change HTTP server port if needed (default: 8182)
+   ;; (setq tyche-http-port 8182)
    
-   ;; Or use a local development server
-   ;; (setq tyche-webview-url "http://localhost:3000")
-   
-   ;; Change WebSocket port if needed
+   ;; Change WebSocket port if needed (default: 8181)
    ;; (setq tyche-websocket-port 8181)
+   
+   ;; Adjust debounce delay (default: 0.6 seconds)
+   ;; (setq tyche-debounce-delay 0.6)
    ```
 
 ## Example Python test with Hypothesis
@@ -83,21 +84,37 @@ def test_square_root(n):
 
 ## What you'll see
 
-The Tyche web view will show:
+When you activate Tyche, you'll see:
 
-- **Distribution of test inputs**: Visual representation of the values Hypothesis generated
-- **Event data**: Visualizations of the events you logged (list lengths, etc.)
-- **Target metrics**: Information about optimization targets
-- **Coverage data**: If available, code coverage information
+1. **Connection Status**: A green "Connected" indicator in the top-right of the web page
+2. **Tyche UI**: The full Tyche visualization interface with:
+   - **Distribution of test inputs**: Visual representation of the values Hypothesis generated
+   - **Event data**: Visualizations of the events you logged (list lengths, etc.)
+   - **Target metrics**: Information about optimization targets
+   - **Coverage data**: If available, code coverage information
+
+The wrapper page automatically connects to the Emacs WebSocket server and displays real-time connection status.
 
 ## Commands to remember
 
-- `M-x tyche-activate` - Start watching for test results
+- `M-x tyche-activate` - Start HTTP + WebSocket servers and open web view
 - `M-x tyche-refresh` - Manually reload all observation files
 - `M-x tyche-open-webview` - Reopen the web view if you closed it
-- `M-x tyche-deactivate` - Stop watching (cleans up file watchers and WebSocket server)
+- `M-x tyche-deactivate` - Stop all servers and clean up resources
 
 ## Troubleshooting
+
+### Connection status shows "Disconnected"
+
+1. Check the *Messages* buffer for errors: `M-x view-echo-area-messages`
+2. Verify WebSocket server started (should see "WebSocket server started on port 8181")
+3. Check if ports are available (not used by other processes)
+4. Try different ports:
+   ```elisp
+   (setq tyche-http-port 8282)
+   (setq tyche-websocket-port 8281)
+   ```
+5. Restart: `M-x tyche-deactivate` then `M-x tyche-activate`
 
 ### Web view doesn't show data
 
@@ -109,23 +126,22 @@ The Tyche web view will show:
 2. Manually refresh: `M-x tyche-refresh`
 
 3. Check the *Messages* buffer for errors
+4. Look at browser console for JavaScript errors
 
-### WebSocket connection fails
+### HTTP server issues
 
-1. Check the Messages buffer: `M-x view-echo-area-messages`
-2. Verify the WebSocket server started (should see "WebSocket server started on port 8181")
-3. Try a different port if 8181 is in use:
-   ```elisp
-   (setq tyche-websocket-port 8282)
-   ```
-4. Restart: `M-x tyche-deactivate` then `M-x tyche-activate`
+If the browser shows "connection refused":
+1. Check if HTTP server started (should see "HTTP server started on port 8182")
+2. Verify the webview directory exists
+3. Check for port conflicts
+4. Try manually: `http://localhost:8182/index.html?wsPort=8181`
 
 ### Browser issues
 
-If the web view doesn't open:
-- Manually open the URL in your browser
-- Default: `https://tyche-pbt.github.io/tyche-extension/`
-- Or your configured `tyche-webview-url`
+If the web view doesn't open automatically:
+- Manually open: `http://localhost:8182/index.html?wsPort=8181`
+- Check your default browser is set correctly
+- The page embeds the Tyche UI from `https://tyche-pbt.github.io/tyche-extension`
 
 ## Advanced: Custom observation globs
 
