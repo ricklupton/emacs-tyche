@@ -297,13 +297,20 @@ File changes are debounced to avoid processing too frequently."
     (unless (file-directory-p webview-dir)
       (user-error "Webview directory not found at %s" webview-dir))
     
+    ;; Note: httpd-root and httpd-port are global variables in simple-httpd
+    ;; This may conflict with other uses of simple-httpd in the same Emacs session
     (setq httpd-root webview-dir)
     (setq httpd-port tyche-http-port)
     
-    ;; Start the server
-    (httpd-start)
-    (setq tyche--http-server-process t)
-    (message "Tyche: HTTP server started on port %d, serving %s" tyche-http-port webview-dir)))
+    ;; Start the server (httpd-start returns the process or signals an error)
+    (condition-case err
+        (progn
+          (httpd-start)
+          (setq tyche--http-server-process t)
+          (message "Tyche: HTTP server started on port %d, serving %s" tyche-http-port webview-dir))
+      (error
+       (message "Tyche: Failed to start HTTP server: %s" (error-message-string err))
+       (user-error "Could not start HTTP server on port %d. Port may be in use" tyche-http-port)))))
 
 (defun tyche--stop-http-server ()
   "Stop the HTTP server."

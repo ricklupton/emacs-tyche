@@ -177,9 +177,16 @@ If the web view can't connect:
 
 ### Web view not opening
 
-- Check your `tyche-webview-url` setting
-- Try opening manually in a browser
-- If using local development server, ensure it's running with `npm run start:webview`
+- Check your `tyche-http-port` setting
+- Try opening manually: `http://localhost:8182/index.html?wsPort=8181`
+- If port 8182 is in use, try a different port: `(setq tyche-http-port 8282)`
+
+### Port conflicts
+
+If you get "Port may be in use" errors:
+- Choose different ports for HTTP and WebSocket servers
+- Note: simple-httpd uses global variables, so only one HTTP server can run at a time in Emacs
+- Deactivate Tyche before using simple-httpd for other purposes
 
 ## Development
 

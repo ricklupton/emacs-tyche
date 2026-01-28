@@ -193,8 +193,20 @@ The URL is passed via query parameter to the wrapper page.
 
 - **Localhost Only**: Both servers bind to localhost (not exposed to network)
 - **No Authentication**: Not needed since servers are local-only
+- **Origin Validation**: Wrapper validates postMessage origins to prevent malicious iframe injection
+- **Secure Messaging**: postMessage uses explicit target origin, not wildcard (*)
 - **CORS**: Wrapper uses iframe + postMessage (secure cross-origin communication)
 - **Input Validation**: Shell commands properly escaped, files validated before reading
+
+## Known Limitations
+
+1. **Global HTTP Server**: simple-httpd uses global variables (`httpd-root`, `httpd-port`), so only one HTTP server can run at a time in Emacs. This may conflict with other packages using simple-httpd.
+
+2. **Single Project**: Currently supports watching one project at a time. Activating for a new project automatically deactivates the previous one.
+
+3. **Browser Dependency**: Requires a web browser to display the UI (cannot use EWW due to WebSocket limitations).
+
+4. **Internet for First Load**: The Tyche UI iframe loads from GitHub.io, requiring internet connection on first access (cached afterward).
 
 ## Performance
 

@@ -116,10 +116,13 @@
                     // Forward the message to the Tyche iframe
                     // The message should be in the format expected by the Tyche React app
                     try {
+                        // Extract the origin from the tycheUrl for secure postMessage
+                        const tycheOrigin = new URL(tycheUrl).origin;
+                        
                         tycheFrame.contentWindow.postMessage({
                             command: 'load-data',
                             lines: event.data
-                        }, '*');
+                        }, tycheOrigin);
                     } catch (e) {
                         console.error('Error posting message to iframe:', e);
                     }
@@ -150,6 +153,18 @@
         
         // Listen for messages from the iframe (if needed)
         window.addEventListener('message', (event) => {
+            // Validate origin to prevent malicious iframes from sending messages
+            try {
+                const expectedOrigin = new URL(tycheUrl).origin;
+                if (event.origin !== expectedOrigin) {
+                    console.warn('Ignoring message from unexpected origin:', event.origin);
+                    return;
+                }
+            } catch (e) {
+                console.error('Error validating message origin:', e);
+                return;
+            }
+            
             // Handle any messages from the Tyche iframe
             if (event.data && event.data.command === 'error') {
                 console.error('Error from Tyche:', event.data.message);
