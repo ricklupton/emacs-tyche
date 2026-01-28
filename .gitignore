@@ -12,6 +12,10 @@ tramp
 *.tar.gz
 dist/
 
+# Test artifacts
+.hypothesis/
+.quickcheck/
+
 # OS
 .DS_Store
 Thumbs.db

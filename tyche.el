@@ -72,10 +72,16 @@ Please install it via: M-x package-install RET websocket RET"
   :type '(repeat string)
   :group 'tyche)
 
-(defcustom tyche-webview-url "http://localhost:3000"
+(defcustom tyche-debounce-delay 0.6
+  "Delay in seconds before processing file changes.
+File changes are debounced to avoid processing too frequently."
+  :type 'number
+  :group 'tyche)
+
+(defcustom tyche-webview-url "https://tyche-pbt.github.io/tyche-extension"
   "URL for the Tyche web view.
-This should point to the tyche-extension webview server.
-You can also use the deployed version at https://tyche-pbt.github.io/tyche-extension/"
+This defaults to the deployed version.
+For local development, you can set this to http://localhost:3000"
   :type 'string
   :group 'tyche)
 
@@ -119,9 +125,13 @@ You can also use the deployed version at https://tyche-pbt.github.io/tyche-exten
   "Handle new WebSocket connection WS."
   (push ws tyche--websocket-clients)
   (message "Tyche: Client connected")
-  ;; Send any buffered observations to the new client
+  ;; Send any buffered observations to the new client only
   (when tyche--observation-buffer
-    (tyche--send-to-websocket-clients tyche--observation-buffer)))
+    (condition-case err
+        (websocket-send-text ws tyche--observation-buffer)
+      (error
+       (message "Tyche: Error sending to new client: %s" err)
+       (setq tyche--websocket-clients (delq ws tyche--websocket-clients))))))
 
 (defun tyche--start-websocket-server ()
   "Start the Tyche WebSocket server."
@@ -167,10 +177,11 @@ You can also use the deployed version at https://tyche-pbt.github.io/tyche-exten
         (default-directory tyche--project-root))
     (dolist (glob globs)
       ;; Convert glob pattern to find command
-      ;; Simple implementation - in real use might need more sophisticated glob handling
+      ;; Handle ** for recursive directory matching
       (let* ((pattern (replace-regexp-in-string "\\*\\*/" "" glob))
              (pattern (replace-regexp-in-string "\\*" ".*" pattern))
-             (find-cmd (format "find . -type f -path './%s' 2>/dev/null" pattern)))
+             (pattern-escaped (shell-quote-argument pattern))
+             (find-cmd (format "find . -type f -path './%s' 2>/dev/null" pattern-escaped)))
         (with-temp-buffer
           (when (zerop (call-process-shell-command find-cmd nil t))
             (goto-char (point-min))
@@ -190,6 +201,11 @@ You can also use the deployed version at https://tyche-pbt.github.io/tyche-exten
       (when (file-exists-p file)
         (with-temp-buffer
           (insert-file-contents file)
+          ;; Ensure file ends with newline
+          (goto-char (point-max))
+          (unless (or (= (point) (point-min))
+                      (eq (char-before) ?\n))
+            (insert "\n"))
           (setq content (concat content (buffer-string))))))
     content))
 
@@ -211,17 +227,21 @@ You can also use the deployed version at https://tyche-pbt.github.io/tyche-exten
   "Handle file system EVENT for observed files."
   (let ((file (nth 2 event))
         (action (nth 1 event)))
-    (when (memq action '(changed created))
+    (cond
+     ((memq action '(changed created))
       ;; Add to pending files
       (push file tyche--pending-files)
       ;; Debounce: reset timer
       (when tyche--pending-timer
         (cancel-timer tyche--pending-timer))
       (setq tyche--pending-timer
-            (run-with-timer 0.6 nil #'tyche--process-pending-files)))))
+            (run-with-timer tyche-debounce-delay nil #'tyche--process-pending-files)))
+     ((eq action 'deleted)
+      ;; Remove from pending files if present
+      (setq tyche--pending-files (delq file tyche--pending-files))))))
 
-(defun tyche--watch-directory (dir _pattern)
-  "Watch DIR for files matching PATTERN."
+(defun tyche--watch-directory (dir)
+  "Watch DIR for file changes."
   (when (file-directory-p dir)
     (let ((watcher (file-notify-add-watch
                    dir
@@ -235,10 +255,10 @@ You can also use the deployed version at https://tyche-pbt.github.io/tyche-exten
         (quickcheck-dir (expand-file-name ".quickcheck/observations" tyche--project-root)))
     ;; Watch .hypothesis/observed directory
     (when (file-directory-p hypothesis-dir)
-      (tyche--watch-directory hypothesis-dir "\\.jsonl$"))
+      (tyche--watch-directory hypothesis-dir))
     ;; Watch .quickcheck/observations directory
     (when (file-directory-p quickcheck-dir)
-      (tyche--watch-directory quickcheck-dir "\\.jsonl$"))
+      (tyche--watch-directory quickcheck-dir))
     (message "Tyche: Watching for changes in observation directories")))
 
 (defun tyche--stop-file-watchers ()
@@ -265,6 +285,11 @@ You can also use the deployed version at https://tyche-pbt.github.io/tyche-exten
 Optional PROJECT-ROOT specifies the project root directory.
 If not provided, uses `project-current' or `default-directory'."
   (interactive)
+  ;; Deactivate first if already active
+  (when tyche--project-root
+    (message "Tyche: Already active, deactivating first...")
+    (tyche-deactivate))
+  
   (let ((root (or project-root
                   (when (fboundp 'project-root)
                     (when-let ((proj (project-current)))
@@ -303,15 +328,15 @@ If not provided, uses `project-current' or `default-directory'."
 (defun tyche-refresh ()
   "Refresh the Tyche view by reloading all observation files."
   (interactive)
-  (when tyche--project-root
-    (let* ((files (tyche--find-files-matching-globs tyche-observation-globs))
-           (content (tyche--read-jsonl-files files)))
-      (when (> (length content) 0)
-        (setq tyche--observation-buffer content)
-        (tyche--send-to-websocket-clients content)
-        (message "Tyche: Refreshed with %d observation file(s)" (length files))))
-    (unless tyche--project-root
-      (message "Tyche: Not activated. Run M-x tyche-activate first"))))
+  (unless tyche--project-root
+    (user-error "Tyche: Not activated. Run M-x tyche-activate first"))
+  
+  (let* ((files (tyche--find-files-matching-globs tyche-observation-globs))
+         (content (tyche--read-jsonl-files files)))
+    (when (> (length content) 0)
+      (setq tyche--observation-buffer content)
+      (tyche--send-to-websocket-clients content)
+      (message "Tyche: Refreshed with %d observation file(s)" (length files)))))
 
 ;;;###autoload
 (defun tyche-open-webview ()

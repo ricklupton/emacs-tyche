@@ -92,8 +92,8 @@ Customize Tyche behavior with these variables:
 ;; Web view URL
 ;; Use local development server:
 (setq tyche-webview-url "http://localhost:3000")
-;; Or use the deployed version:
-(setq tyche-webview-url "https://tyche-pbt.github.io/tyche-extension/")
+;; Or use the deployed version (default):
+(setq tyche-webview-url "https://tyche-pbt.github.io/tyche-extension")
 ```
 
 ## Setting up the web view
@@ -102,7 +102,7 @@ This package includes the Tyche web UI as a submodule. You have two options:
 
 ### Option 1: Use the deployed web view (easiest)
 
-The default configuration uses the deployed version at `https://tyche-pbt.github.io/tyche-extension/`, which should work out of the box.
+The default configuration uses the deployed version at `https://tyche-pbt.github.io/tyche-extension`, which should work out of the box.
 
 ### Option 2: Run the web view locally
 
