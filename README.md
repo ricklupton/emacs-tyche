@@ -15,9 +15,11 @@ This Emacs package provides similar functionality to the [VS Code extension](htt
 ## Features
 
 - **Automatic file watching**: Monitors `.hypothesis/observed/` and `.quickcheck/observations/` directories for changes
-- **WebSocket server**: Communicates with the Tyche web UI via WebSocket
+- **HTTP server**: Serves the Tyche web UI locally for offline use
+- **WebSocket server**: Communicates with the web UI via WebSocket for real-time updates
 - **Live updates**: Automatically sends new test observations to the web view
 - **Project-based activation**: Easy to enable/disable per project
+- **Bundled UI**: Works offline without requiring external dependencies
 
 ## Installation
 
@@ -25,6 +27,7 @@ This Emacs package provides similar functionality to the [VS Code extension](htt
 
 - Emacs 27.1 or later
 - [websocket.el](https://github.com/ahyatt/emacs-websocket) package
+- [simple-httpd](https://github.com/skeeto/emacs-web-server) package
 
 ### Installing from source
 
@@ -39,9 +42,10 @@ This Emacs package provides similar functionality to the [VS Code extension](htt
    (require 'tyche)
    ```
 
-3. Install the `websocket` package if not already installed:
+3. Install the required packages if not already installed:
    ```elisp
    M-x package-install RET websocket RET
+   M-x package-install RET simple-httpd RET
    ```
 
 ## Usage
@@ -53,7 +57,8 @@ This Emacs package provides similar functionality to the [VS Code extension](htt
    M-x tyche-activate
    ```
    This will:
-   - Start a WebSocket server on port 8181 (configurable)
+   - Start an HTTP server on port 8182 (configurable) to serve the web UI
+   - Start a WebSocket server on port 8181 (configurable) for data communication
    - Begin watching for observation files
    - Open the Tyche web view in your browser
 
@@ -81,6 +86,9 @@ This Emacs package provides similar functionality to the [VS Code extension](htt
 Customize Tyche behavior with these variables:
 
 ```elisp
+;; HTTP server port (default: 8182)
+(setq tyche-http-port 8182)
+
 ;; WebSocket port (default: 8181)
 (setq tyche-websocket-port 8181)
 
@@ -89,61 +97,39 @@ Customize Tyche behavior with these variables:
       '("**/.hypothesis/observed/*.jsonl"
         "**/.quickcheck/observations/*.jsonl"))
 
-;; Web view URL
-;; Use local development server:
-(setq tyche-webview-url "http://localhost:3000")
-;; Or use the deployed version (default):
-(setq tyche-webview-url "https://tyche-pbt.github.io/tyche-extension")
+;; File change debounce delay in seconds (default: 0.6)
+(setq tyche-debounce-delay 0.6)
 ```
-
-## Setting up the web view
-
-This package includes the Tyche web UI as a submodule. You have two options:
-
-### Option 1: Use the deployed web view (easiest)
-
-The default configuration uses the deployed version at `https://tyche-pbt.github.io/tyche-extension`, which should work out of the box.
-
-### Option 2: Run the web view locally
-
-For development or if you prefer a local setup:
-
-1. Navigate to the submodule:
-   ```bash
-   cd tyche-extension
-   ```
-
-2. Install dependencies:
-   ```bash
-   npm run install:all
-   ```
-
-3. Build the observability tools:
-   ```bash
-   npm run build:observability-tools
-   ```
-
-4. Start the development server:
-   ```bash
-   npm run start:webview
-   ```
-
-5. Configure Emacs to use the local server:
-   ```elisp
-   (setq tyche-webview-url "http://localhost:3000")
-   ```
 
 ## How it works
 
+The emacs-tyche package creates a local web server architecture similar to the VS Code extension:
+
+1. **HTTP Server** (port 8182): Serves a custom HTML page (`webview/index.html`) that acts as a wrapper
+2. **WebSocket Server** (port 8181): Sends observation data to the web UI in real-time
+3. **Wrapper Page**: Connects to the WebSocket server and embeds the Tyche web UI in an iframe
+4. **Message Forwarding**: The wrapper receives data via WebSocket and forwards it to the Tyche UI using `postMessage`
+
+This architecture:
+- Works completely offline (no external dependencies once installed)
+- Mirrors the VS Code extension's messaging pattern
+- Allows the Tyche UI to work without modification
+- Provides clear connection status and error handling
+
+## Workflow
+
 1. When you activate Tyche, the package:
-   - Starts a WebSocket server that the web view can connect to
+   - Starts an HTTP server to serve the custom wrapper page
+   - Starts a WebSocket server for data communication
    - Sets up file system watchers for observation directories
    - Loads any existing observation files
+   - Opens the web UI in your browser
 
 2. When test files are created/modified:
    - The file watcher detects changes
    - After a brief debounce period (600ms), the package reads the JSONL files
    - The content is sent to all connected WebSocket clients
+   - The wrapper page receives the data and forwards it to the Tyche UI
 
 3. The web view:
    - Connects to the WebSocket server

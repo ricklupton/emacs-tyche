@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tyche - Property-Based Testing Visualizer</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+                'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+        
+        #status {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            padding: 8px 12px;
+            background: #f0f0f0;
+            border-radius: 4px;
+            font-size: 12px;
+            z-index: 1000;
+        }
+        
+        #status.connected {
+            background: #d4edda;
+            color: #155724;
+        }
+        
+        #status.disconnected {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        
+        #tyche-frame {
+            width: 100%;
+            height: 100vh;
+            border: none;
+        }
+        
+        #error-message {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            padding: 20px;
+            background: #fff;
+            border: 2px solid #dc3545;
+            border-radius: 8px;
+            max-width: 500px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        
+        #error-message.show {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div id="status" class="disconnected">Connecting...</div>
+    <div id="error-message">
+        <h3>Error</h3>
+        <p id="error-text"></p>
+    </div>
+    <iframe id="tyche-frame" src=""></iframe>
+
+    <script>
+        const wsPort = window.location.search.match(/wsPort=(\d+)/)?.[1] || '8181';
+        const tycheUrl = window.location.search.match(/tycheUrl=([^&]+)/)?.[1] 
+            ? decodeURIComponent(window.location.search.match(/tycheUrl=([^&]+)/)[1])
+            : 'https://tyche-pbt.github.io/tyche-extension';
+        
+        const statusDiv = document.getElementById('status');
+        const errorDiv = document.getElementById('error-message');
+        const errorText = document.getElementById('error-text');
+        const tycheFrame = document.getElementById('tyche-frame');
+        
+        let ws = null;
+        let reconnectTimer = null;
+        
+        // Load the Tyche UI
+        tycheFrame.src = tycheUrl;
+        
+        function showError(message) {
+            errorText.textContent = message;
+            errorDiv.classList.add('show');
+            setTimeout(() => {
+                errorDiv.classList.remove('show');
+            }, 5000);
+        }
+        
+        function connectWebSocket() {
+            statusDiv.textContent = 'Connecting...';
+            statusDiv.className = 'disconnected';
+            
+            try {
+                ws = new WebSocket(`ws://localhost:${wsPort}`);
+                
+                ws.onopen = () => {
+                    console.log('WebSocket connected');
+                    statusDiv.textContent = 'Connected';
+                    statusDiv.className = 'connected';
+                    if (reconnectTimer) {
+                        clearTimeout(reconnectTimer);
+                        reconnectTimer = null;
+                    }
+                };
+                
+                ws.onmessage = (event) => {
+                    console.log('Received data from Emacs:', event.data);
+                    
+                    // Forward the message to the Tyche iframe
+                    // The message should be in the format expected by the Tyche React app
+                    try {
+                        tycheFrame.contentWindow.postMessage({
+                            command: 'load-data',
+                            lines: event.data
+                        }, '*');
+                    } catch (e) {
+                        console.error('Error posting message to iframe:', e);
+                    }
+                };
+                
+                ws.onerror = (error) => {
+                    console.error('WebSocket error:', error);
+                    statusDiv.textContent = 'Connection error';
+                    statusDiv.className = 'disconnected';
+                };
+                
+                ws.onclose = () => {
+                    console.log('WebSocket closed');
+                    statusDiv.textContent = 'Disconnected';
+                    statusDiv.className = 'disconnected';
+                    
+                    // Attempt to reconnect after 2 seconds
+                    if (!reconnectTimer) {
+                        reconnectTimer = setTimeout(connectWebSocket, 2000);
+                    }
+                };
+            } catch (e) {
+                console.error('Failed to create WebSocket:', e);
+                showError('Failed to connect to Emacs WebSocket server');
+                reconnectTimer = setTimeout(connectWebSocket, 2000);
+            }
+        }
+        
+        // Listen for messages from the iframe (if needed)
+        window.addEventListener('message', (event) => {
+            // Handle any messages from the Tyche iframe
+            if (event.data && event.data.command === 'error') {
+                console.error('Error from Tyche:', event.data.message);
+                showError(event.data.message);
+            }
+        });
+        
+        // Start connection
+        tycheFrame.onload = () => {
+            console.log('Tyche iframe loaded');
+            connectWebSocket();
+        };
+    </script>
+</body>
+</html>

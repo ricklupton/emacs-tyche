@@ -5,7 +5,7 @@
 ;; Author: Rick Lupton
 ;; URL: https://github.com/ricklupton/emacs-tyche
 ;; Version: 0.1.0
-;; Package-Requires: ((emacs "27.1") (websocket "1.13"))
+;; Package-Requires: ((emacs "27.1") (websocket "1.13") (simple-httpd "1.5.1"))
 ;; Keywords: tools, testing, property-based-testing
 
 ;; This file is not part of GNU Emacs.
@@ -53,6 +53,13 @@
 Please install it via: M-x package-install RET websocket RET"
                    :warning))
 
+;; Soft dependency on simple-httpd
+(unless (require 'simple-httpd nil t)
+  (display-warning 'tyche
+                   "simple-httpd is not installed. HTTP server functionality will not be available.
+Please install it via: M-x package-install RET simple-httpd RET"
+                   :warning))
+
 ;;; Customization
 
 (defgroup tyche nil
@@ -62,6 +69,11 @@ Please install it via: M-x package-install RET websocket RET"
 
 (defcustom tyche-websocket-port 8181
   "Port for the Tyche WebSocket server."
+  :type 'integer
+  :group 'tyche)
+
+(defcustom tyche-http-port 8182
+  "Port for the Tyche HTTP server."
   :type 'integer
   :group 'tyche)
 
@@ -78,13 +90,6 @@ File changes are debounced to avoid processing too frequently."
   :type 'number
   :group 'tyche)
 
-(defcustom tyche-webview-url "https://tyche-pbt.github.io/tyche-extension"
-  "URL for the Tyche web view.
-This defaults to the deployed version.
-For local development, you can set this to http://localhost:3000"
-  :type 'string
-  :group 'tyche)
-
 ;;; Internal variables
 
 (defvar tyche--project-root nil
@@ -98,6 +103,9 @@ For local development, you can set this to http://localhost:3000"
 
 (defvar tyche--websocket-clients nil
   "List of connected WebSocket clients.")
+
+(defvar tyche--http-server-process nil
+  "HTTP server process.")
 
 (defvar tyche--pending-files nil
   "List of files with pending changes.")
@@ -270,12 +278,47 @@ For local development, you can set this to http://localhost:3000"
     (cancel-timer tyche--pending-timer)
     (setq tyche--pending-timer nil)))
 
-;;; Web view
+;;; HTTP server
+
+(defun tyche--get-package-directory ()
+  "Get the directory where tyche.el is located."
+  (file-name-directory (or load-file-name buffer-file-name)))
+
+(defun tyche--start-http-server ()
+  "Start the HTTP server to serve the Tyche web UI."
+  (unless (featurep 'simple-httpd)
+    (user-error "simple-httpd is not available. Please install it via: M-x package-install RET simple-httpd RET"))
+  
+  (when tyche--http-server-process
+    (tyche--stop-http-server))
+  
+  ;; Set httpd root to our webview directory
+  (let ((webview-dir (expand-file-name "webview" (tyche--get-package-directory))))
+    (unless (file-directory-p webview-dir)
+      (user-error "Webview directory not found at %s" webview-dir))
+    
+    (setq httpd-root webview-dir)
+    (setq httpd-port tyche-http-port)
+    
+    ;; Start the server
+    (httpd-start)
+    (setq tyche--http-server-process t)
+    (message "Tyche: HTTP server started on port %d, serving %s" tyche-http-port webview-dir)))
+
+(defun tyche--stop-http-server ()
+  "Stop the HTTP server."
+  (when tyche--http-server-process
+    (httpd-stop)
+    (setq tyche--http-server-process nil)
+    (message "Tyche: HTTP server stopped")))
 
 (defun tyche--open-webview ()
   "Open the Tyche web view in a browser."
-  (browse-url tyche-webview-url)
-  (message "Tyche: Opened web view at %s" tyche-webview-url))
+  (let ((url (format "http://localhost:%d/index.html?wsPort=%d"
+                    tyche-http-port
+                    tyche-websocket-port)))
+    (browse-url url)
+    (message "Tyche: Opened web view at %s" url)))
 
 ;;; Public commands
 
@@ -297,6 +340,9 @@ If not provided, uses `project-current' or `default-directory'."
                   default-directory)))
     (setq tyche--project-root (expand-file-name root))
     (message "Tyche: Activating for project at %s" tyche--project-root)
+    
+    ;; Start HTTP server
+    (tyche--start-http-server)
     
     ;; Start WebSocket server
     (tyche--start-websocket-server)
@@ -320,6 +366,7 @@ If not provided, uses `project-current' or `default-directory'."
   (interactive)
   (tyche--stop-file-watchers)
   (tyche--stop-websocket-server)
+  (tyche--stop-http-server)
   (setq tyche--project-root nil)
   (setq tyche--observation-buffer nil)
   (message "Tyche: Deactivated"))
