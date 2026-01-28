@@ -44,8 +44,14 @@
 
 (require 'filenotify)
 (require 'json)
-(require 'websocket)
 (require 'url)
+
+;; Soft dependency on websocket
+(unless (require 'websocket nil t)
+  (display-warning 'tyche
+                   "websocket.el is not installed. WebSocket functionality will not be available.
+Please install it via: M-x package-install RET websocket RET"
+                   :warning))
 
 ;;; Customization
 
@@ -98,7 +104,7 @@ You can also use the deployed version at https://tyche-pbt.github.io/tyche-exten
 
 ;;; WebSocket server
 
-(defun tyche--websocket-on-message (ws frame)
+(defun tyche--websocket-on-message (_ws frame)
   "Handle incoming WebSocket message from client WS with FRAME."
   (let ((msg (websocket-frame-text frame)))
     (message "Tyche: Received message: %s" msg)))
@@ -119,6 +125,8 @@ You can also use the deployed version at https://tyche-pbt.github.io/tyche-exten
 
 (defun tyche--start-websocket-server ()
   "Start the Tyche WebSocket server."
+  (unless (featurep 'websocket)
+    (user-error "websocket.el is not available. Please install it via: M-x package-install RET websocket RET"))
   (when tyche--websocket-server
     (tyche--stop-websocket-server))
   (setq tyche--websocket-server
@@ -212,7 +220,7 @@ You can also use the deployed version at https://tyche-pbt.github.io/tyche-exten
       (setq tyche--pending-timer
             (run-with-timer 0.6 nil #'tyche--process-pending-files)))))
 
-(defun tyche--watch-directory (dir pattern)
+(defun tyche--watch-directory (dir _pattern)
   "Watch DIR for files matching PATTERN."
   (when (file-directory-p dir)
     (let ((watcher (file-notify-add-watch
