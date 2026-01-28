@@ -1,0 +1,3 @@
+[submodule "tyche-extension"]
+	path = tyche-extension
+	url = https://github.com/tyche-pbt/tyche-extension.git
